@@ -148,7 +148,7 @@ For more information about this error, try `rustc --explain E0382`.
 
 ##### test_access_after_add 
 
-Аналогично примеру со std::vector:
+Аналогично примеру для C++ со `std::vector`:
 ```
 fn test_access_after_add() -> Vec<i32> {
     let mut vec = vec![1, 2, 3];
