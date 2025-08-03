@@ -12,13 +12,15 @@
 
 ## Решаемые проблемы 
 
-- ошибка [Segmentation fault](https://en.wikipedia.org/wiki/Segmentation_fault). Возникает при обращении к ранее выделенному, но уже освобожденному участку памяти
+Автоматическое освобождние ресура с контролем доступа к нему позволяет избежить следующих проблем:
 
-- "утечка памяти" (["memory leak"](https://en.wikipedia.org/wiki/Memory_leak))". Возникает, когда не происходит освобождение ранее выделенного участка памяти
+- ошибки [Segmentation fault](https://en.wikipedia.org/wiki/Segmentation_fault), коорая возникает при обращении к ранее выделенному, но уже освобожденному участку памяти
+
+- "утечки памяти" (["memory leak"](https://en.wikipedia.org/wiki/Memory_leak))", коорая возникает, когда **не происходит** освобождение ранее выделенного участка памяти
 
 ## Ретроспектива 
 
-На заре программирования (язык С) освобождение ресурсов в программе производилось раработчиком "вручную" (["manual memory management"](https://en.wikipedia.org/wiki/Manual_memory_management)).
+На заре программирования (язык С) освобождение ресурсов в программе производилось рараб отчиком "вручную" (["manual memory management"](https://en.wikipedia.org/wiki/Manual_memory_management)).
 
 Столкнувшись со сложностью этой задачи ([многочисленными ошибками](https://en.wikipedia.org/wiki/Memory_safety), связанными с этим, особенно в сложных проектах с участием большого количества разработчиков), в runtime'ах языков программирования (Python, Java, JavaScript, Go) появился [Garbage collector](https://ru.wikipedia.org/wiki/%D0%A1%D0%B1%D0%BE%D1%80%D0%BA%D0%B0_%D0%BC%D1%83%D1%81%D0%BE%D1%80%D0%B0), автоматически освобождающий уже неиспользуемые ресурсы.
 
