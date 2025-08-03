@@ -63,9 +63,6 @@
 
 Нередко, в поытке отрицания "правил владения и заимствования" разработчик вступает в [борьбу с Borrow Checker'ом](https://docs.rs/you-can/latest/you_can/attr.turn_off_the_borrow_checker.html),. Однако единственным правльным решением является принятие ["правил игры"](https://rustc-dev-guide.rust-lang.org/borrow_check.html)  
 
-https://google.github.io/comprehensive-rust/borrowing/borrowck.html:
-- Rust’s borrow checker puts constraints on the ways you can borrow values. We’ve already seen that a reference cannot outlive the value it borrows
-
 #### Примеры на С++
 
 ##### test_access_after_delete 
