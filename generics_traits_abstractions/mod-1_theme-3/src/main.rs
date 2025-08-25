@@ -6,17 +6,19 @@ fn main() {
 
 #[derive(Debug)]
 enum AccountError {
-    AlreadyLocked,
+    Locked,
     InsufficientFunds,
 }
 
 trait Account: Clone {
     type AccountId: std::hash::Hash + Eq;
     type LockedAccount: LockedAccount<Self>;
-    type Amount: Clone;
+    // type Amount: Clone + PartialOrd + std::ops::Sub<Output = Self::Amount>;
+    type Amount: Clone + PartialOrd + std::ops::SubAssign;
 
     fn id(&self) -> Self::AccountId;
     fn get_locked(&self) -> Result<Self::LockedAccount, AccountError>;
+    fn get_balance(&self) -> Result<Self::Amount, AccountError>;
 }
 
 trait LockedAccount<T: Account> {
@@ -205,180 +207,234 @@ trait Transaction {
         Ok(())
     }
 }
-//
-// // ----------------------------
-//
-// struct SingleOperationTransaction<T, A>
+
+// ----------------------------
+
+struct SingleOperationTransaction<T, A>
+where
+    T: Operation<A>,
+    A: Account,
+{
+    operation: T,
+    marker_a: std::marker::PhantomData<A>,
+}
+
+impl<T, A> Transaction for SingleOperationTransaction<T, A>
+where
+    T: Operation<A>,
+    A: Account,
+{
+    type TransactionAccount = A;
+
+    fn debit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        if let Some((account, amount)) = self.operation.debit_account() {
+            vec![(account, amount)]
+        } else {
+            vec![]
+        }
+    }
+
+    fn credit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        if let Some((account, amount)) = self.operation.credit_account() {
+            vec![(account, amount)]
+        } else {
+            vec![]
+        }
+    }
+}
+
+// ----------------------------
+
+struct PairedOperationTransaction<T1, T2, A>
+where
+    T1: Operation<A>,
+    T1: Operation<A>,
+    A: Account,
+{
+    first_operation: T1,
+    second_operation: T2,
+    marker_a: std::marker::PhantomData<A>,
+}
+
+impl<T1, T2, A> Transaction for PairedOperationTransaction<T1, T2, A>
+where
+    T1: Operation<A>,
+    T2: Operation<A>,
+    A: Account,
+{
+    type TransactionAccount = A;
+
+    fn debit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        vec![
+            self.first_operation.debit_account(),
+            self.second_operation.debit_account(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+    }
+
+    fn credit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        vec![
+            self.first_operation.credit_account(),
+            self.second_operation.credit_account(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+    }
+}
+
+// ----------------------------
+
+struct MultipleOperationTransaction<A>
+where
+    A: Account,
+{
+    operations: Vec<Box<dyn Operation<A>>>,
+}
+
+impl<A> Transaction for MultipleOperationTransaction<A>
+where
+    A: Account,
+{
+    type TransactionAccount = A;
+
+    fn debit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        self.operations
+            .iter()
+            .filter_map(|i| i.debit_account())
+            .collect::<Vec<_>>()
+    }
+    fn credit_accounts(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        <Self::TransactionAccount as Account>::Amount,
+    )> {
+        self.operations
+            .iter()
+            .filter_map(|i| i.credit_account())
+            .collect::<Vec<_>>()
+    }
+}
+
+// ----------------------------
+
+// #[cfg(test)]
+// mod tests {
+
+struct LockedSimpleAccount<T: Account> {
+    balance: T::Amount,
+    parent: T,
+}
+
+impl<T: Account> LockedAccount<T> for LockedSimpleAccount<T> {
+    fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError>
 // where
-//     T: Operation<A>,
-//     A: Account,
-// {
-//     operation: T,
-//     marker_a: std::marker::PhantomData<A>,
-// }
-//
-// impl<T, A> Transaction for SingleOperationTransaction<T, A>
-// where
-//     T: Operation<A>,
-//     A: Account,
-// {
-//     type Account = A;
-//
-//     fn debit_accounts(&self) -> Vec<(&Self::Account, Amount)> {
-//         if let Some((account, amount)) = self.operation.debit_account() {
-//             vec![(account, amount)]
-//         } else {
-//             vec![]
-//         }
-//     }
-//     fn credit_accounts(&self) -> Vec<(&Self::Account, Amount)> {
-//         if let Some((account, amount)) = self.operation.credit_account() {
-//             vec![(account, amount)]
-//         } else {
-//             vec![]
-//         }
-//     }
-// }
-//
-// // ----------------------------
-//
-// struct PairedOperationTransaction<T1, T2, A>
-// where
-//     T1: Operation<A>,
-//     T1: Operation<A>,
-//     A: Account,
-// {
-//     first_operation: T1,
-//     second_operation: T2,
-//     marker_a: std::marker::PhantomData<A>,
-// }
-//
-// impl<T1, T2, A> Transaction for PairedOperationTransaction<T1, T2, A>
-// where
-//     T1: Operation<A>,
-//     T2: Operation<A>,
-//     A: Account,
-// {
-//     type Account = A;
-//
-//     fn debit_accounts(&self) -> Vec<(&A, Amount)> {
-//         vec![
-//             self.first_operation.debit_account(),
-//             self.second_operation.debit_account(),
-//         ]
-//         .into_iter()
-//         .flatten()
-//         .collect::<Vec<_>>()
-//     }
-//     fn credit_accounts(&self) -> Vec<(&A, Amount)> {
-//         vec![
-//             self.first_operation.credit_account(),
-//             self.second_operation.credit_account(),
-//         ]
-//         .into_iter()
-//         .flatten()
-//         .collect::<Vec<_>>()
-//     }
-// }
-//
-// // ----------------------------
-//
-// struct MultipleOperationTransaction<A>
-// where
-//     A: Account,
-// {
-//     operations: Vec<Box<dyn Operation<A>>>,
-// }
-//
-// impl<A> Transaction for MultipleOperationTransaction<A>
-// where
-//     A: Account,
-// {
-//     type Account = A;
-//
-//     fn debit_accounts(&self) -> Vec<(&A, Amount)> {
-//         self.operations
-//             .iter()
-//             .filter_map(|i| i.debit_account())
-//             .collect::<Vec<_>>()
-//     }
-//     fn credit_accounts(&self) -> Vec<(&A, Amount)> {
-//         self.operations
-//             .iter()
-//             .filter_map(|i| i.credit_account())
-//             .collect::<Vec<_>>()
-//     }
-// }
-//
-// // ----------------------------
-//
-// // #[cfg(test)]
-// // mod tests {
-//
-// struct LockedSimpleAccount {
-//     parent: std::sync::Arc<SimpleAccount>,
-// }
-//
-// impl LockedAccount for LockedSimpleAccount {
-//     fn debit(&self, amount: Amount) -> Result<(), AccountError> {
-//         todo!();
-//     }
-//     fn credit(&self, amount: Amount) {
-//         todo!();
-//     }
-// }
-//
+    //     <T::Amount as std::ops::Sub>::Output: T::Amount,
+    {
+        if amount > self.balance {
+            Err(AccountError::InsufficientFunds)
+        } else {
+            self.balance -= amount;
+            Ok(())
+        }
+    }
+    fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+        todo!();
+    }
+    fn commit(&self) {
+        todo!();
+    }
+}
+
 // impl Drop for LockedSimpleAccount {
 //     fn drop(&mut self) {
 //         *self.parent.locked.write().unwrap() = None;
 //     }
 // }
 //
-// struct SimpleAccount {
-//     id: u64,
-//     locked: std::sync::RwLock<Option<std::sync::Weak<LockedSimpleAccount>>>,
-//     balance: std::sync::atomic::AtomicU64,
-// }
-//
-// impl LockedAccount for std::sync::Arc<SimpleAccount> {
-//     fn debit(&self, amount: Amount) -> Result<(), AccountError> {
-//         // if self.parent
-//         // if let Some(account) =
-//         todo!();
-//     }
-//     fn credit(&self, amount: Amount) {
-//         todo!();
-//     }
-// }
-//
-// impl Account for std::sync::Arc<SimpleAccount> {
-//     type AccountId = u64;
-//     type LockedAccount = LockedSimpleAccount;
-//     fn id(&self) -> u64 {
-//         self.id
-//     }
-//     fn get_locked(&self) -> Result<std::sync::Arc<Self::LockedAccount>, AccountError> {
-//         if let Some(locked) = (*self.locked.read().unwrap())
-//             .as_ref()
-//             .and_then(|weak| weak.upgrade())
-//         {
-//             Err(AccountError::AlreadyLocked)
-//         } else {
-//             let locked = std::sync::Arc::new(LockedSimpleAccount {
-//                 parent: std::sync::Arc::clone(&self),
-//             });
-//             *self.locked.write().unwrap() = Some(std::sync::Arc::downgrade(&locked));
-//             Ok(locked)
-//         }
-//     }
-//     // fn debit(&self, amount: Amount) -> Result<(), AccountError> {
-//     //     // if
-//     //     self.balance.fetch_add(amount.0)
-//     // }
-//     // fn credit(&self, amount: Amount) {
-//     //     self.balance.fetch_add(amount.0)
-//     // }
-//     // fn get_balance(&self) -> u64 {}
-// }
-//
-// // }
+
+enum SimpleAccountInternal<T: Account> {
+    Balance(T::Amount),
+    Locked,
+    // Locked(std::sync::Weak<LockedSimpleAccount<T>>),
+}
+struct SimpleAccount<
+    AccountId: Clone + std::hash::Hash + PartialEq + Eq,
+    Amount: Clone + PartialOrd + std::ops::SubAssign,
+> {
+    id: AccountId,
+    internal: std::sync::RwLock<SimpleAccountInternal<std::sync::Arc<Self>>>,
+    marker: std::marker::PhantomData<Amount>,
+}
+
+impl<
+        AccountId: Clone + std::hash::Hash + PartialEq + Eq,
+        Amount: Clone + PartialOrd + std::ops::SubAssign,
+    > Account for std::sync::Arc<SimpleAccount<AccountId, Amount>>
+{
+    type AccountId = AccountId;
+    type LockedAccount = LockedSimpleAccount<Self>;
+    type Amount = Amount;
+    fn id(&self) -> AccountId {
+        self.id.clone()
+    }
+    fn get_locked(&self) -> Result<Self::LockedAccount, AccountError> {
+        if let Ok(mut internal) = self.internal.write() {
+            let internal = &mut *internal;
+            let mut value = SimpleAccountInternal::Locked;
+            std::mem::swap(&mut value, internal);
+            if let SimpleAccountInternal::Balance(balance) = value {
+                Ok(LockedSimpleAccount {
+                    balance,
+                    parent: std::sync::Arc::clone(self),
+                })
+            } else {
+                Err(AccountError::Locked)
+            }
+        } else {
+            Err(AccountError::Locked)
+        }
+    }
+    fn get_balance(&self) -> Result<Self::Amount, AccountError> {
+        self.internal
+            .read()
+            .ok()
+            .and_then(|internal| {
+                if let SimpleAccountInternal::Balance(balance) = &*internal {
+                    Some(balance.clone())
+                } else {
+                    None
+                }
+            })
+            .map(|balance| Ok(balance))
+            .unwrap_or(Err(AccountError::Locked))
+    }
+}
