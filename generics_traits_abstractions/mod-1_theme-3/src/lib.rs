@@ -12,7 +12,7 @@ pub trait Account: Clone {
     fn id(&self) -> Self::AccountId;
     fn get_balance(&self) -> Result<Self::Amount, AccountError>;
     fn get_locked(&self) -> Result<Self::LockedAccount, AccountError>;
-    fn commit_locked(&self, locked: Self::LockedAccount);
+    // fn commit_locked(&self, locked: Self::LockedAccount);
 }
 
 pub trait LockedAccount<T: Account> {
@@ -194,9 +194,10 @@ pub trait Transaction {
             to_be_commited
         };
 
-        for (account, locked) in to_be_commited {
-            account.commit_locked(locked);
-        }
+        todo!();
+        // for (account, locked) in to_be_commited {
+        //     account.commit_locked(locked);
+        // }
 
         Ok(())
     }
@@ -344,29 +345,31 @@ where
 // mod tests {
 
 pub struct LockedSimpleAccount<SimpleAccount: Account> {
-    balance: SimpleAccount::Amount,
+    non_commited_balance: T::Amount,
+    guard: std::sync::RwLockWriteGuard<'a, T::Amount>,
+    // balance: SimpleAccount::Amount,
     // parent: SimpleAccount,
 }
 
-impl<T: Account> LockedAccount<T> for LockedSimpleAccount<T> {
+impl<'a, T: Account<'a>> LockedAccount<T> for LockedSimpleAccount<'a, T> {
     fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
-        if amount > self.balance {
+        if amount > self.non_commited_balance {
             Err(AccountError::InsufficientFunds)
         } else {
-            self.balance -= amount;
+            self.non_commited_balance -= amount;
             Ok(())
         }
     }
     fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
-        self.balance += amount;
+        self.non_commited_balance += amount;
         Ok(())
     }
 }
 
-enum SimpleAccountInternal<T: Account> {
-    Balance(T::Amount),
-    Locked,
-}
+// enum SimpleAccountInternal<T: Account> {
+//     Balance(T::Amount),
+//     Locked,
+// }
 
 pub struct SimpleAccount<
     AccountId: Clone + std::hash::Hash + PartialEq + Eq,
@@ -405,21 +408,13 @@ impl<
             Err(AccountError::Locked)
         }
     }
-    fn commit_locked(&self, locked: Self::LockedAccount) {
-        *self.internal.write().unwrap() = SimpleAccountInternal::Balance(locked.balance);
-    }
+    // fn commit_locked(&self, locked: Self::LockedAccount) {
+    //     *self.internal.write().unwrap() = SimpleAccountInternal::Balance(locked.balance);
+    // }
     fn get_balance(&self) -> Result<Self::Amount, AccountError> {
-        self.internal
+        self.balance
             .read()
-            .ok()
-            .and_then(|internal| {
-                if let SimpleAccountInternal::Balance(balance) = &*internal {
-                    Some(balance.clone())
-                } else {
-                    None
-                }
-            })
-            .map(|balance| Ok(balance))
-            .unwrap_or(Err(AccountError::Locked))
+            .map(|guard| guard.clone())
+            .map_err(|_| AccountError::Locked)
     }
 }
