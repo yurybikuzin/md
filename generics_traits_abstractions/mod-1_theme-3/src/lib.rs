@@ -7,18 +7,21 @@ pub enum AccountError {
 pub trait Account: Clone {
     type AccountId: std::hash::Hash + Eq;
     // type LockedAccount: LockedAccount<Self>;
-    type LockedAccount: LockedAccount<Self::Amount>;
+    type LockedAccount<'a>: LockedAccount<'a, Self::Amount>
+    where
+        Self: 'a;
     type Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign;
 
     fn id(&self) -> Self::AccountId;
     fn get_balance(&self) -> Result<Self::Amount, AccountError>;
-    fn get_locked(&self) -> Result<Self::LockedAccount, AccountError>;
+    fn get_locked<'a>(&'a self) -> Result<Self::LockedAccount<'a>, AccountError>;
     // fn commit_locked(&self, locked: Self::LockedAccount);
 }
 
-pub trait LockedAccount<Amount> {
+pub trait LockedAccount<'a, Amount> {
     fn debit(&mut self, amount: Amount) -> Result<(), AccountError>;
     fn credit(&mut self, amount: Amount) -> Result<(), AccountError>;
+    fn commit(self);
 }
 
 // ----------------------------
@@ -97,110 +100,111 @@ pub trait Transaction {
     )>;
 
     fn apply(&self) -> Result<(), TransactionError<Self::TransactionAccount>> {
-        use std::collections::HashMap;
-
-        enum BalanceOperation<Amount> {
-            Credit(Amount),
-            Debit(Amount),
-        }
-
-        struct Value<T: Account> {
-            account: T,
-            locked: T::LockedAccount,
-            balance_operations: Vec<BalanceOperation<T::Amount>>,
-        }
-        type LockedAccounts<AccountId, Account> = HashMap<AccountId, Value<Account>>;
-        let locked_accounts = {
-            let mut locked_accounts = LockedAccounts::<
-                <Self::TransactionAccount as Account>::AccountId,
-                Self::TransactionAccount,
-            >::new();
-
-            for (account, amount) in self.debit_accounts() {
-                let balance_operation = BalanceOperation::Debit(amount);
-                use std::collections::hash_map::Entry;
-                match locked_accounts.entry(account.id()) {
-                    Entry::Occupied(mut e) => {
-                        e.get_mut().balance_operations.push(balance_operation);
-                    }
-                    Entry::Vacant(e) => {
-                        let account = account.clone();
-                        match account.get_locked() {
-                            Ok(locked) => {
-                                e.insert(Value {
-                                    balance_operations: vec![balance_operation],
-                                    locked,
-                                    account,
-                                });
-                            }
-                            Err(err) => {
-                                return Err(TransactionError { account, err });
-                            }
-                        }
-                    }
-                }
-            }
-
-            for (account, amount) in self.credit_accounts() {
-                let balance_operation = BalanceOperation::Credit(amount);
-                use std::collections::hash_map::Entry;
-                match locked_accounts.entry(account.id()) {
-                    Entry::Occupied(mut e) => {
-                        e.get_mut().balance_operations.push(balance_operation);
-                    }
-                    Entry::Vacant(e) => {
-                        let account = account.clone();
-                        match account.get_locked() {
-                            Ok(locked) => {
-                                e.insert(Value {
-                                    balance_operations: vec![balance_operation],
-                                    locked,
-                                    account,
-                                });
-                            }
-                            Err(err) => {
-                                return Err(TransactionError { account, err });
-                            }
-                        }
-                    }
-                }
-            }
-
-            locked_accounts
-        };
-
-        let to_be_commited = {
-            let mut to_be_commited = vec![];
-            for (
-                _,
-                Value {
-                    account,
-                    mut locked,
-                    balance_operations,
-                },
-            ) in locked_accounts
-            {
-                for i in balance_operations {
-                    let res = match i {
-                        BalanceOperation::Credit(amount) => locked.credit(amount),
-                        BalanceOperation::Debit(amount) => locked.debit(amount),
-                    };
-                    if let Err(err) = res {
-                        return Err(TransactionError { err, account });
-                    }
-                }
-                to_be_commited.push((account, locked));
-            }
-
-            to_be_commited
-        };
-
         todo!();
-        // for (account, locked) in to_be_commited {
-        //     account.commit_locked(locked);
+        // use std::collections::HashMap;
+        //
+        // enum BalanceOperation<Amount> {
+        //     Credit(Amount),
+        //     Debit(Amount),
         // }
-
-        Ok(())
+        //
+        // struct Value<'a, T: Account> {
+        //     account: T,
+        //     locked: T::LockedAccount<'a>,
+        //     balance_operations: Vec<BalanceOperation<T::Amount>>,
+        // }
+        // type LockedAccounts<AccountId, Account> = HashMap<AccountId, Value<Account>>;
+        // let locked_accounts = {
+        //     let mut locked_accounts = LockedAccounts::<
+        //         <Self::TransactionAccount as Account>::AccountId,
+        //         Self::TransactionAccount,
+        //     >::new();
+        //
+        //     for (account, amount) in self.debit_accounts() {
+        //         let balance_operation = BalanceOperation::Debit(amount);
+        //         use std::collections::hash_map::Entry;
+        //         match locked_accounts.entry(account.id()) {
+        //             Entry::Occupied(mut e) => {
+        //                 e.get_mut().balance_operations.push(balance_operation);
+        //             }
+        //             Entry::Vacant(e) => {
+        //                 let account = account.clone();
+        //                 match account.get_locked() {
+        //                     Ok(locked) => {
+        //                         e.insert(Value {
+        //                             balance_operations: vec![balance_operation],
+        //                             locked,
+        //                             account,
+        //                         });
+        //                     }
+        //                     Err(err) => {
+        //                         return Err(TransactionError { account, err });
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //
+        //     for (account, amount) in self.credit_accounts() {
+        //         let balance_operation = BalanceOperation::Credit(amount);
+        //         use std::collections::hash_map::Entry;
+        //         match locked_accounts.entry(account.id()) {
+        //             Entry::Occupied(mut e) => {
+        //                 e.get_mut().balance_operations.push(balance_operation);
+        //             }
+        //             Entry::Vacant(e) => {
+        //                 let account = account.clone();
+        //                 match account.get_locked() {
+        //                     Ok(locked) => {
+        //                         e.insert(Value {
+        //                             balance_operations: vec![balance_operation],
+        //                             locked,
+        //                             account,
+        //                         });
+        //                     }
+        //                     Err(err) => {
+        //                         return Err(TransactionError { account, err });
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //
+        //     locked_accounts
+        // };
+        //
+        // let to_be_commited = {
+        //     let mut to_be_commited = vec![];
+        //     for (
+        //         _,
+        //         Value {
+        //             account,
+        //             mut locked,
+        //             balance_operations,
+        //         },
+        //     ) in locked_accounts
+        //     {
+        //         for i in balance_operations {
+        //             let res = match i {
+        //                 BalanceOperation::Credit(amount) => locked.credit(amount),
+        //                 BalanceOperation::Debit(amount) => locked.debit(amount),
+        //             };
+        //             if let Err(err) = res {
+        //                 return Err(TransactionError { err, account });
+        //             }
+        //         }
+        //         to_be_commited.push((account, locked));
+        //     }
+        //
+        //     to_be_commited
+        // };
+        //
+        // todo!();
+        // // for (account, locked) in to_be_commited {
+        // //     account.commit_locked(locked);
+        // // }
+        //
+        // Ok(())
     }
 }
 
@@ -373,7 +377,7 @@ pub struct LockedSimpleAccount<'a, Amount> {
 }
 
 impl<'a, Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign>
-    LockedAccount<Amount> for LockedSimpleAccount<'a, Amount>
+    LockedAccount<'_, Amount> for LockedSimpleAccount<'_, Amount>
 {
     fn debit(&mut self, amount: Amount) -> Result<(), AccountError> {
         if amount > self.non_commited_balance {
@@ -386,6 +390,10 @@ impl<'a, Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign>
     fn credit(&mut self, amount: Amount) -> Result<(), AccountError> {
         self.non_commited_balance += amount;
         Ok(())
+    }
+    fn commit(self) {
+        let mut this = self;
+        *this.guard = this.non_commited_balance;
     }
 }
 
@@ -414,13 +422,17 @@ impl<
     > Account for std::sync::Arc<SimpleAccount<AccountId, Amount>>
 {
     type AccountId = AccountId;
-    type LockedAccount = LockedSimpleAccount<Self::Amount>;
+    type LockedAccount<'a>
+        = LockedSimpleAccount<'a, Self::Amount>
+    where
+        Amount: 'a,
+        AccountId: 'a;
     type Amount = Amount;
     fn id(&self) -> AccountId {
         self.id.clone()
     }
-    fn get_locked(&self) -> Result<Self::LockedAccount, AccountError> {
-        if let Ok(mut guard) = self.balance.write() {
+    fn get_locked<'a>(&'a self) -> Result<Self::LockedAccount<'a>, AccountError> {
+        if let Ok(guard) = self.balance.write() {
             Ok(LockedSimpleAccount {
                 non_commited_balance: guard.clone(),
                 guard,
