@@ -15,15 +15,12 @@ enum AccountError {
     InsufficientFunds,
 }
 
-trait Account<TransactionId: PartialEq + Eq>: Clone {
-    type AccountId;
+trait Account: Clone {
+    type AccountId: std::hash::Hash + Eq;
     type LockedAccount: LockedAccount;
 
     fn id(&self) -> Self::AccountId;
-    fn get_locked(
-        &self,
-        transaction_id: TransactionId,
-    ) -> Result<std::sync::Arc<Self::LockedAccount>, AccountError>;
+    fn get_locked(&self) -> Result<std::sync::Arc<Self::LockedAccount>, AccountError>;
 }
 
 trait LockedAccount {
@@ -33,7 +30,7 @@ trait LockedAccount {
 
 // ----------------------------
 
-trait Operation<T: Account<TransactionId>, TransactionId: Eq> {
+trait Operation<T: Account> {
     fn debit_account(&self) -> Option<(&T, Amount)> {
         None
     }
@@ -44,15 +41,12 @@ trait Operation<T: Account<TransactionId>, TransactionId: Eq> {
 
 // ----------------------------
 
-struct Withdrawal<T: Account<TransactionId>, TransactionId: Eq> {
+struct Withdrawal<T: Account> {
     account: T,
     debit: Amount,
-    marker: std::marker::PhantomData<TransactionId>,
 }
 
-impl<T: Account<TransactionId>, TransactionId: Eq> Operation<T, TransactionId>
-    for Withdrawal<T, TransactionId>
-{
+impl<T: Account> Operation<T> for Withdrawal<T> {
     fn debit_account(&self) -> Option<(&T, Amount)> {
         Some((&self.account, self.debit))
     }
@@ -60,29 +54,23 @@ impl<T: Account<TransactionId>, TransactionId: Eq> Operation<T, TransactionId>
 
 // ----------------------------
 
-struct Deposit<T: Account<TransactionId>, TransactionId: PartialEq + Eq> {
+struct Deposit<T: Account> {
     account: T,
     credit: Amount,
-    marker: std::marker::PhantomData<TransactionId>,
 }
 
-impl<T: Account<TransactionId>, TransactionId: PartialEq + Eq> Operation<T, TransactionId>
-    for Deposit<T, TransactionId>
-{
+impl<T: Account> Operation<T> for Deposit<T> {
     fn credit_account(&self) -> Option<(&T, Amount)> {
         Some((&self.account, self.credit))
     }
 }
 
-struct Transfer<T: Account<TransactionId>, TransactionId: PartialEq + Eq> {
-    withdrawal: Withdrawal<T, TransactionId>,
-    deposit: Deposit<T, TransactionId>,
-    marker: std::marker::PhantomData<TransactionId>,
+struct Transfer<T: Account> {
+    withdrawal: Withdrawal<T>,
+    deposit: Deposit<T>,
 }
 
-impl<T: Account<TransactionId>, TransactionId: PartialEq + Eq> Operation<T, TransactionId>
-    for Transfer<T, TransactionId>
-{
+impl<T: Account> Operation<T> for Transfer<T> {
     fn debit_account(&self) -> Option<(&T, Amount)> {
         self.withdrawal.debit_account()
     }
@@ -93,39 +81,44 @@ impl<T: Account<TransactionId>, TransactionId: PartialEq + Eq> Operation<T, Tran
 
 // ----------------------------
 
-struct TransactionError<T: Account<TransactionId>, TransactionId: PartialEq + Eq> {
+struct TransactionError<T: Account> {
     account: T,
     err: AccountError,
-    marker: std::marker::PhantomData<TransactionId>,
 }
 
-// trait Transaction<T: Account<TransactionId>, TransactionId: std::fmt::Debug> {
 trait Transaction {
-    type TransactionId: std::fmt::Debug + Eq + Clone;
-    type Account: Account<Self::TransactionId>;
-
-    fn id(&self) -> Self::TransactionId;
+    type Account: Account;
 
     fn debit_accounts(&self) -> Vec<(&Self::Account, Amount)>;
     fn credit_accounts(&self) -> Vec<(&Self::Account, Amount)>;
 
-    fn apply(&self) -> Result<(), TransactionError<Self::Account, Self::TransactionId>> {
-        let transaction_id = self.id();
+    fn apply(&self) -> Result<(), TransactionError<Self::Account>> {
+        let mut locked_accounts = std::collections::HashMap::new();
 
         let locked_debit_accounts = {
             let mut locked_debit_accounts = vec![];
             for (account, amount) in self.debit_accounts() {
-                match account.get_locked(transaction_id.clone()) {
-                    Ok(locked_account) => {
-                        locked_debit_accounts.push((account, locked_account, amount));
+                use std::collections::hash_map::Entry;
+                match locked_accounts.entry(account.id()) {
+                    Entry::Occupied(e) => {
+                        locked_debit_accounts.push((
+                            account,
+                            std::sync::Arc::clone(e.get()),
+                            amount,
+                        ));
                     }
-                    Err(err) => {
-                        return Err(TransactionError {
-                            account: account.clone(),
-                            err,
-                            marker: std::marker::PhantomData,
-                        });
-                    }
+                    Entry::Vacant(e) => match account.get_locked() {
+                        Ok(locked_account) => {
+                            e.insert(std::sync::Arc::clone(&locked_account));
+                            locked_debit_accounts.push((account, locked_account, amount));
+                        }
+                        Err(err) => {
+                            return Err(TransactionError {
+                                account: account.clone(),
+                                err,
+                            });
+                        }
+                    },
                 }
             }
             locked_debit_accounts
@@ -134,21 +127,28 @@ trait Transaction {
         let locked_credit_accounts = {
             let mut locked_credit_accounts = vec![];
             for (account, amount) in self.credit_accounts() {
-                match account.get_locked(transaction_id.clone()) {
-                    Err(err) => {
-                        return Err(TransactionError {
-                            account: account.clone(),
-                            err,
-                            marker: std::marker::PhantomData,
-                        });
+                use std::collections::hash_map::Entry;
+                match locked_accounts.entry(account.id()) {
+                    Entry::Occupied(e) => {
+                        locked_credit_accounts.push((std::sync::Arc::clone(e.get()), amount));
                     }
-                    Ok(locked_account) => {
-                        locked_credit_accounts.push((locked_account, amount));
-                    }
+                    Entry::Vacant(e) => match account.get_locked() {
+                        Ok(locked_account) => {
+                            e.insert(std::sync::Arc::clone(&locked_account));
+                            locked_credit_accounts.push((locked_account, amount));
+                        }
+                        Err(err) => {
+                            return Err(TransactionError {
+                                account: account.clone(),
+                                err,
+                            });
+                        }
+                    },
                 }
             }
             locked_credit_accounts
         };
+
         {
             let mut count_of_successfully_debited_accounts = 0;
             for (account, locked_account, amount) in locked_debit_accounts.iter() {
@@ -162,46 +162,39 @@ trait Transaction {
                     return Err(TransactionError {
                         account: (**account).clone(),
                         err,
-                        marker: std::marker::PhantomData,
                     });
                 } else {
                     count_of_successfully_debited_accounts += 1;
                 }
             }
         }
+
         for (locked_account, amount) in locked_credit_accounts.iter() {
             locked_account.credit(*amount);
         }
+
         Ok(())
     }
 }
 
 // ----------------------------
 
-struct SingleOperationTransaction<T, A, TransactionId>
+struct SingleOperationTransaction<T, A>
 where
-    T: Operation<A, TransactionId>,
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + PartialEq + Eq,
+    T: Operation<A>,
+    A: Account,
 {
-    id: TransactionId,
     operation: T,
     marker_a: std::marker::PhantomData<A>,
-    marker_transaction_id: std::marker::PhantomData<TransactionId>,
 }
 
-impl<T, A, TransactionId> Transaction for SingleOperationTransaction<T, A, TransactionId>
+impl<T, A> Transaction for SingleOperationTransaction<T, A>
 where
-    T: Operation<A, TransactionId>,
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + Eq + Clone,
+    T: Operation<A>,
+    A: Account,
 {
-    type TransactionId = TransactionId;
     type Account = A;
 
-    fn id(&self) -> Self::TransactionId {
-        self.id()
-    }
     fn debit_accounts(&self) -> Vec<(&Self::Account, Amount)> {
         if let Some((account, amount)) = self.operation.debit_account() {
             vec![(account, amount)]
@@ -220,33 +213,25 @@ where
 
 // ----------------------------
 
-struct PairedOperationTransaction<T1, T2, A, TransactionId>
+struct PairedOperationTransaction<T1, T2, A>
 where
-    T1: Operation<A, TransactionId>,
-    T1: Operation<A, TransactionId>,
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + Eq,
+    T1: Operation<A>,
+    T1: Operation<A>,
+    A: Account,
 {
-    id: TransactionId,
     first_operation: T1,
     second_operation: T2,
     marker_a: std::marker::PhantomData<A>,
-    marker_transaction_id: std::marker::PhantomData<TransactionId>,
 }
 
-impl<T1, T2, A, TransactionId> Transaction for PairedOperationTransaction<T1, T2, A, TransactionId>
+impl<T1, T2, A> Transaction for PairedOperationTransaction<T1, T2, A>
 where
-    T1: Operation<A, TransactionId>,
-    T2: Operation<A, TransactionId>,
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + Eq + Clone,
+    T1: Operation<A>,
+    T2: Operation<A>,
+    A: Account,
 {
-    type TransactionId = TransactionId;
     type Account = A;
 
-    fn id(&self) -> Self::TransactionId {
-        self.id()
-    }
     fn debit_accounts(&self) -> Vec<(&A, Amount)> {
         vec![
             self.first_operation.debit_account(),
@@ -269,26 +254,19 @@ where
 
 // ----------------------------
 
-struct MultipleOperationTransaction<A, TransactionId>
+struct MultipleOperationTransaction<A>
 where
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + Eq,
+    A: Account,
 {
-    operations: Vec<Box<dyn Operation<A, TransactionId>>>,
-    marker_transaction_id: std::marker::PhantomData<TransactionId>,
+    operations: Vec<Box<dyn Operation<A>>>,
 }
 
-impl<A, TransactionId> Transaction for MultipleOperationTransaction<A, TransactionId>
+impl<A> Transaction for MultipleOperationTransaction<A>
 where
-    A: Account<TransactionId>,
-    TransactionId: std::fmt::Debug + Eq + Clone,
+    A: Account,
 {
-    type TransactionId = TransactionId;
     type Account = A;
 
-    fn id(&self) -> Self::TransactionId {
-        self.id()
-    }
     fn debit_accounts(&self) -> Vec<(&A, Amount)> {
         self.operations
             .iter()
@@ -308,12 +286,11 @@ where
 // #[cfg(test)]
 // mod tests {
 
-struct LockedSimpleAccount<TransactionId> {
-    parent: std::sync::Arc<SimpleAccount<TransactionId>>,
-    transaction_id: TransactionId,
+struct LockedSimpleAccount {
+    parent: std::sync::Arc<SimpleAccount>,
 }
 
-impl<TransactionId> LockedAccount for LockedSimpleAccount<TransactionId> {
+impl LockedAccount for LockedSimpleAccount {
     fn debit(&self, amount: Amount) -> Result<(), AccountError> {
         todo!();
     }
@@ -322,14 +299,22 @@ impl<TransactionId> LockedAccount for LockedSimpleAccount<TransactionId> {
     }
 }
 
-struct SimpleAccount<TransactionId> {
+impl Drop for LockedSimpleAccount {
+    fn drop(&mut self) {
+        *self.parent.locked.write().unwrap() = None;
+    }
+}
+
+struct SimpleAccount {
     id: u64,
-    locked: std::sync::Weak<LockedSimpleAccount<TransactionId>>,
+    locked: std::sync::RwLock<Option<std::sync::Weak<LockedSimpleAccount>>>,
     balance: std::sync::atomic::AtomicU64,
 }
 
-impl<TransactionId> LockedAccount for std::sync::Arc<SimpleAccount<TransactionId>> {
+impl LockedAccount for std::sync::Arc<SimpleAccount> {
     fn debit(&self, amount: Amount) -> Result<(), AccountError> {
+        // if self.parent
+        // if let Some(account) =
         todo!();
     }
     fn credit(&self, amount: Amount) {
@@ -337,37 +322,26 @@ impl<TransactionId> LockedAccount for std::sync::Arc<SimpleAccount<TransactionId
     }
 }
 
-impl<TransactionId: PartialEq + Eq> Account<TransactionId>
-    for std::sync::Arc<SimpleAccount<TransactionId>>
-{
+impl Account for std::sync::Arc<SimpleAccount> {
     type AccountId = u64;
-    type LockedAccount = LockedSimpleAccount<TransactionId>;
+    type LockedAccount = LockedSimpleAccount;
     fn id(&self) -> u64 {
         self.id
     }
-    fn get_locked(
-        &self,
-        transaction_id: TransactionId,
-    ) -> Result<std::sync::Arc<Self::LockedAccount>, AccountError> {
-        if let Some(locked) = self.locked.upgrade() {
-            if locked.transaction_id == transaction_id {
-                Ok(locked)
-            } else {
-                Err(AccountError::AlreadyLocked)
-            }
+    fn get_locked(&self) -> Result<std::sync::Arc<Self::LockedAccount>, AccountError> {
+        if let Some(locked) = (*self.locked.read().unwrap())
+            .as_ref()
+            .and_then(|weak| weak.upgrade())
+        {
+            Err(AccountError::AlreadyLocked)
         } else {
             let locked = std::sync::Arc::new(LockedSimpleAccount {
                 parent: std::sync::Arc::clone(&self),
-                transaction_id,
             });
-            self.locked = std::sync::Arc::downgrade(&locked);
+            *self.locked.write().unwrap() = Some(std::sync::Arc::downgrade(&locked));
             Ok(locked)
         }
     }
-    // fn unlock(&self) {
-    //     self.is_locked
-    //         .store(false, std::sync::atomic::Ordering::SeqCst)
-    // }
     // fn debit(&self, amount: Amount) -> Result<(), AccountError> {
     //     // if
     //     self.balance.fetch_add(amount.0)
