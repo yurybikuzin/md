@@ -6,7 +6,8 @@ pub enum AccountError {
 
 pub trait Account: Clone {
     type AccountId: std::hash::Hash + Eq;
-    type LockedAccount: LockedAccount<Self>;
+    // type LockedAccount: LockedAccount<Self>;
+    type LockedAccount: LockedAccount<Self::Amount>;
     type Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign;
 
     fn id(&self) -> Self::AccountId;
@@ -15,9 +16,9 @@ pub trait Account: Clone {
     // fn commit_locked(&self, locked: Self::LockedAccount);
 }
 
-pub trait LockedAccount<T: Account> {
-    fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError>;
-    fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError>;
+pub trait LockedAccount<Amount> {
+    fn debit(&mut self, amount: Amount) -> Result<(), AccountError>;
+    fn credit(&mut self, amount: Amount) -> Result<(), AccountError>;
 }
 
 // ----------------------------
@@ -344,15 +345,37 @@ where
 // #[cfg(test)]
 // mod tests {
 
-pub struct LockedSimpleAccount<SimpleAccount: Account> {
-    non_commited_balance: T::Amount,
-    guard: std::sync::RwLockWriteGuard<'a, T::Amount>,
-    // balance: SimpleAccount::Amount,
-    // parent: SimpleAccount,
+// pub struct LockedSimpleAccount<'a, SimpleAccount: Account> {
+//     non_commited_balance: SimpleAccount::Amount,
+//     guard: std::sync::RwLockWriteGuard<'a, SimpleAccount::Amount>,
+//     // balance: SimpleAccount::Amount,
+//     // parent: SimpleAccount,
+// }
+
+// impl<'a, T: Account<'a>> LockedAccount<T> for LockedSimpleAccount<'a, T> {
+//     fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+//         if amount > self.non_commited_balance {
+//             Err(AccountError::InsufficientFunds)
+//         } else {
+//             self.non_commited_balance -= amount;
+//             Ok(())
+//         }
+//     }
+//     fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+//         self.non_commited_balance += amount;
+//         Ok(())
+//     }
+// }
+
+pub struct LockedSimpleAccount<'a, Amount> {
+    non_commited_balance: Amount,
+    guard: std::sync::RwLockWriteGuard<'a, Amount>,
 }
 
-impl<'a, T: Account<'a>> LockedAccount<T> for LockedSimpleAccount<'a, T> {
-    fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+impl<'a, Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign>
+    LockedAccount<Amount> for LockedSimpleAccount<'a, Amount>
+{
+    fn debit(&mut self, amount: Amount) -> Result<(), AccountError> {
         if amount > self.non_commited_balance {
             Err(AccountError::InsufficientFunds)
         } else {
@@ -360,25 +383,30 @@ impl<'a, T: Account<'a>> LockedAccount<T> for LockedSimpleAccount<'a, T> {
             Ok(())
         }
     }
-    fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+    fn credit(&mut self, amount: Amount) -> Result<(), AccountError> {
         self.non_commited_balance += amount;
         Ok(())
     }
 }
-
-// enum SimpleAccountInternal<T: Account> {
-//     Balance(T::Amount),
-//     Locked,
-// }
 
 pub struct SimpleAccount<
     AccountId: Clone + std::hash::Hash + PartialEq + Eq,
     Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign,
 > {
     id: AccountId,
-    internal: std::sync::RwLock<SimpleAccountInternal<std::sync::Arc<Self>>>,
+    balance: std::sync::RwLock<Amount>,
+    // internal: std::sync::RwLock<SimpleAccountInternal<std::sync::Arc<Self>>>,
     marker: std::marker::PhantomData<Amount>,
 }
+
+// pub struct SimpleAccount<
+//     AccountId: Clone + std::hash::Hash + PartialEq + Eq,
+//     Amount: Clone + PartialOrd + std::ops::SubAssign + std::ops::AddAssign,
+// > {
+//     id: AccountId,
+//     internal: std::sync::RwLock<SimpleAccountInternal<std::sync::Arc<Self>>>,
+//     marker: std::marker::PhantomData<Amount>,
+// }
 
 impl<
         AccountId: Clone + std::hash::Hash + PartialEq + Eq,
@@ -386,27 +414,35 @@ impl<
     > Account for std::sync::Arc<SimpleAccount<AccountId, Amount>>
 {
     type AccountId = AccountId;
-    type LockedAccount = LockedSimpleAccount<Self>;
+    type LockedAccount = LockedSimpleAccount<Self::Amount>;
     type Amount = Amount;
     fn id(&self) -> AccountId {
         self.id.clone()
     }
     fn get_locked(&self) -> Result<Self::LockedAccount, AccountError> {
-        if let Ok(mut internal) = self.internal.write() {
-            let internal = &mut *internal;
-            let mut value = SimpleAccountInternal::Locked;
-            std::mem::swap(&mut value, internal);
-            if let SimpleAccountInternal::Balance(balance) = value {
-                Ok(LockedSimpleAccount {
-                    balance,
-                    // parent: std::sync::Arc::clone(self),
-                })
-            } else {
-                Err(AccountError::Locked)
-            }
+        if let Ok(mut guard) = self.balance.write() {
+            Ok(LockedSimpleAccount {
+                non_commited_balance: guard.clone(),
+                guard,
+            })
         } else {
             Err(AccountError::Locked)
         }
+        // if let Ok(mut internal) = self.internal.write() {
+        //     let internal = &mut *internal;
+        //     let mut value = SimpleAccountInternal::Locked;
+        //     std::mem::swap(&mut value, internal);
+        //     if let SimpleAccountInternal::Balance(balance) = value {
+        //         Ok(LockedSimpleAccount {
+        //             balance,
+        //             // parent: std::sync::Arc::clone(self),
+        //         })
+        //     } else {
+        //         Err(AccountError::Locked)
+        //     }
+        // } else {
+        //     Err(AccountError::Locked)
+        // }
     }
     // fn commit_locked(&self, locked: Self::LockedAccount) {
     //     *self.internal.write().unwrap() = SimpleAccountInternal::Balance(locked.balance);
