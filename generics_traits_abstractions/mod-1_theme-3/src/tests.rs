@@ -50,60 +50,43 @@ fn explicit() {
     );
 
     assert!(matches!(
-        SingleOperationTransaction::new(Transfer::new(charlie.clone(), alice.clone(), 50)).apply(),
-        Ok(())
-    ));
-    assert!(
-        matches!(charlie.get_balance(), Ok(250)),
-        "{:?}",
-        charlie.get_balance()
-    );
-    assert!(
-        matches!(alice.get_balance(), Ok(200)),
-        "{:?}",
-        alice.get_balance()
-    );
-
-    assert!(matches!(
         PairedOperationTransaction::new(
-            Transfer::new(alice.clone(), bob.clone(), 50),
-            Transfer::new(bob.clone(), charlie.clone(), 50),
+            Withdrawal::new(alice.clone(), 50),
+            Deposit::new(bob.clone(), 50),
         )
         .apply(),
         Ok(())
     ));
     assert!(
-        matches!(alice.get_balance(), Ok(150)),
+        matches!(alice.get_balance(), Ok(100)),
         "{:?}",
         alice.get_balance()
     );
     assert!(
-        matches!(bob.get_balance(), Ok(150)),
+        matches!(bob.get_balance(), Ok(200)),
         "{:?}",
-        alice.get_balance()
-    );
-    assert!(
-        matches!(charlie.get_balance(), Ok(300)),
-        "{:?}",
-        charlie.get_balance()
+        bob.get_balance()
     );
 
     assert!(matches!(
         MultipleOperationTransaction::new(vec![
-            Box::new(Transfer::new(alice.clone(), bob.clone(), 50)),
-            Box::new(Transfer::new(bob.clone(), charlie.clone(), 40)),
-            Box::new(Transfer::new(charlie.clone(), alice.clone(), 30)),
+            Box::new(Withdrawal::new(alice.clone(), 50)),
+            Box::new(Deposit::new(bob.clone(), 50)),
+            Box::new(Withdrawal::new(bob.clone(), 40)),
+            Box::new(Deposit::new(charlie.clone(), 40)),
+            Box::new(Withdrawal::new(charlie.clone(), 30)),
+            Box::new(Deposit::new(alice.clone(), 30)),
         ])
         .apply(),
         Ok(())
     ));
     assert!(
-        matches!(alice.get_balance(), Ok(130)),
+        matches!(alice.get_balance(), Ok(80)),
         "{:?}",
         alice.get_balance()
     );
     assert!(
-        matches!(bob.get_balance(), Ok(160)),
+        matches!(bob.get_balance(), Ok(210)),
         "{:?}",
         bob.get_balance()
     );
@@ -138,31 +121,16 @@ fn implicit() {
     );
 
     assert!(matches!(
-        transaction!( charlie => 50 => alice ).apply(),
-        Ok(())
-    ));
-    assert!(
-        matches!(charlie.get_balance(), Ok(250)),
-        "{:?}",
-        charlie.get_balance()
-    );
-    assert!(
-        matches!(alice.get_balance(), Ok(200)),
-        "{:?}",
-        alice.get_balance()
-    );
-
-    assert!(matches!(
         transaction![charlie.clone() + 50.into(), alice.clone() - 50.into()].apply(),
         Ok(())
     ));
     assert!(
-        matches!(alice.get_balance(), Ok(150)),
+        matches!(alice.get_balance(), Ok(100)),
         "{:?}",
         alice.get_balance()
     );
     assert!(
-        matches!(charlie.get_balance(), Ok(300)),
+        matches!(charlie.get_balance(), Ok(350)),
         "{:?}",
         charlie.get_balance()
     );

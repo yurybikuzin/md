@@ -25,30 +25,13 @@ where
 {
     type TransactionAccount = A;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )> {
-        if let Some((account, amount)) = self.operation.debit_account() {
-            vec![(account, amount)]
-        } else {
-            vec![]
-        }
-    }
-
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )> {
-        if let Some((account, amount)) = self.operation.credit_account() {
-            vec![(account, amount)]
-        } else {
-            vec![]
-        }
+        vec![self.operation.balance_operation()]
     }
 }
 
@@ -83,34 +66,16 @@ where
 {
     type TransactionAccount = A;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )> {
         vec![
-            self.first_operation.debit_account(),
-            self.second_operation.debit_account(),
+            self.first_operation.balance_operation(),
+            self.second_operation.balance_operation(),
         ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-    }
-
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )> {
-        vec![
-            self.first_operation.credit_account(),
-            self.second_operation.credit_account(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
     }
 }
 
@@ -132,35 +97,23 @@ where
 {
     type TransactionAccount = T;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )> {
         self.operations
             .iter()
-            .filter_map(|i| i.debit_account())
-            .collect::<Vec<_>>()
-    }
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )> {
-        self.operations
-            .iter()
-            .filter_map(|i| i.credit_account())
+            .map(|i| i.balance_operation())
             .collect::<Vec<_>>()
     }
 }
 
+// ----------------------------
+
 #[macro_export]
 macro_rules! transaction {
-    ($from:expr => $amount:expr => $to:expr) => {
-        SingleOperationTransaction::new(Transfer::new($from.clone(), $to.clone(), $amount))
-    };
     // https://lukaswirth.dev/tlborm/decl-macros/patterns/push-down-acc.html
     // https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html
     ( $( $operations:expr ),+ $(,)? ) => {

@@ -14,8 +14,8 @@ impl<A: Account> Withdrawal<A> {
 }
 
 impl<A: Account> Operation<A> for Withdrawal<A> {
-    fn debit_account(&self) -> Option<(&A, A::Amount)> {
-        Some((&self.account, self.debit.clone()))
+    fn balance_operation(&self) -> (&A, BalanceOperation<A::Amount>) {
+        (&self.account, BalanceOperation::Debit(self.debit.clone()))
     }
 }
 
@@ -25,22 +25,13 @@ where
 {
     type TransactionAccount = A;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )> {
-        vec![(&self.account, self.debit.clone())]
-    }
-
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )> {
-        vec![]
+        vec![self.balance_operation()]
     }
 }
 
@@ -58,8 +49,8 @@ impl<A: Account> Deposit<A> {
 }
 
 impl<A: Account> Operation<A> for Deposit<A> {
-    fn credit_account(&self) -> Option<(&A, A::Amount)> {
-        Some((&self.account, self.credit.clone()))
+    fn balance_operation(&self) -> (&A, BalanceOperation<A::Amount>) {
+        (&self.account, BalanceOperation::Credit(self.credit.clone()))
     }
 }
 
@@ -69,48 +60,12 @@ where
 {
     type TransactionAccount = A;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )> {
-        vec![]
-    }
-
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )> {
-        vec![(&self.account, self.credit.clone())]
-    }
-}
-
-// ----------------------------
-
-pub struct Transfer<A: Account> {
-    from_account: A,
-    to_account: A,
-    amount: A::Amount,
-}
-
-impl<A: Account> Transfer<A> {
-    pub fn new(from_account: A, to_account: A, amount: A::Amount) -> Self {
-        Self {
-            from_account,
-            to_account,
-            amount,
-        }
-    }
-}
-
-impl<A: Account> Operation<A> for Transfer<A> {
-    fn debit_account(&self) -> Option<(&A, A::Amount)> {
-        Some((&self.from_account, self.amount.clone()))
-    }
-    fn credit_account(&self) -> Option<(&A, A::Amount)> {
-        Some((&self.to_account, self.amount.clone()))
+        vec![self.balance_operation()]
     }
 }

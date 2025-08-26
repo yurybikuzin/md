@@ -27,12 +27,7 @@ pub trait LockedAccount<'a, T: Account>: Debug {
 // ----------------------------
 
 pub trait Operation<T: Account> {
-    fn debit_account(&self) -> Option<(&T, T::Amount)> {
-        None
-    }
-    fn credit_account(&self) -> Option<(&T, T::Amount)> {
-        None
-    }
+    fn balance_operation(&self) -> (&T, BalanceOperation<T::Amount>);
 }
 
 // ----------------------------
@@ -60,18 +55,11 @@ pub enum BalanceOperation<Amount> {
 pub trait Transaction {
     type TransactionAccount: Account;
 
-    fn debit_accounts(
+    fn account_balance_operations(
         &self,
     ) -> Vec<(
         &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
-    )>;
-
-    fn credit_accounts(
-        &self,
-    ) -> Vec<(
-        &Self::TransactionAccount,
-        <Self::TransactionAccount as Account>::Amount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
     )>;
 
     fn apply(&self) -> Result<(), TransactionError<Self::TransactionAccount>> {
@@ -91,8 +79,7 @@ pub trait Transaction {
                 Self::TransactionAccount,
             >::new();
 
-            for (account, amount) in self.debit_accounts() {
-                let balance_operation = BalanceOperation::Debit(amount.clone());
+            for (account, balance_operation) in self.account_balance_operations() {
                 use std::collections::hash_map::Entry;
                 match locked_accounts.entry(account.id()) {
                     Entry::Occupied(mut e) => {
@@ -117,31 +104,6 @@ pub trait Transaction {
                 }
             }
 
-            for (account, amount) in self.credit_accounts() {
-                let balance_operation = BalanceOperation::Credit(amount);
-                use std::collections::hash_map::Entry;
-                match locked_accounts.entry(account.id()) {
-                    Entry::Occupied(mut e) => {
-                        e.get_mut().balance_operations.push(balance_operation);
-                    }
-                    Entry::Vacant(e) => match account.get_locked() {
-                        Ok(locked) => {
-                            e.insert(Value {
-                                balance_operations: vec![balance_operation],
-                                locked,
-                                account: (*account).clone(),
-                            });
-                        }
-                        Err(err) => {
-                            return Err(TransactionError {
-                                account: (*account).clone(),
-                                operation: TransactionOperation::Balance(balance_operation),
-                                err,
-                            });
-                        }
-                    },
-                }
-            }
             locked_accounts
         };
 
