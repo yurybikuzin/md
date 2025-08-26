@@ -112,13 +112,13 @@ where
 
 // ----------------------------
 
-pub struct LockedSimpleAccount<'a, T: Account> {
-    account: &'a T,
-    non_commited_balance: T::Amount,
-    guard: std::sync::RwLockWriteGuard<'a, T::Amount>,
+pub struct LockedSimpleAccount<'a, A: Account> {
+    account: &'a A,
+    non_commited_balance: A::Amount,
+    guard: std::sync::RwLockWriteGuard<'a, A::Amount>,
 }
 
-impl<'a, T: Account> Debug for LockedSimpleAccount<'a, T> {
+impl<'a, A: Account> Debug for LockedSimpleAccount<'a, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LockedSimpleAccount")
             .field("account", &self.account)
@@ -127,8 +127,8 @@ impl<'a, T: Account> Debug for LockedSimpleAccount<'a, T> {
     }
 }
 
-impl<'a, T: Account> LockedAccount<'a, T> for LockedSimpleAccount<'a, T> {
-    fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+impl<'a, A: Account> LockedAccount<'a, A> for LockedSimpleAccount<'a, A> {
+    fn debit(&mut self, amount: A::Amount) -> Result<(), AccountError> {
         if amount > self.non_commited_balance {
             Err(AccountError::InsufficientFunds)
         } else {
@@ -136,7 +136,7 @@ impl<'a, T: Account> LockedAccount<'a, T> for LockedSimpleAccount<'a, T> {
             Ok(())
         }
     }
-    fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError> {
+    fn credit(&mut self, amount: A::Amount) -> Result<(), AccountError> {
         self.non_commited_balance += amount;
         Ok(())
     }

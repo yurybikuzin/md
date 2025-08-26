@@ -18,25 +18,25 @@ pub trait Account: Debug + Clone {
     fn get_locked<'a>(&'a self) -> Result<Self::LockedAccount<'a>, AccountError>;
 }
 
-pub trait LockedAccount<'a, T: Account>: Debug {
-    fn debit(&mut self, amount: T::Amount) -> Result<(), AccountError>;
-    fn credit(&mut self, amount: T::Amount) -> Result<(), AccountError>;
+pub trait LockedAccount<'a, A: Account>: Debug {
+    fn debit(&mut self, amount: A::Amount) -> Result<(), AccountError>;
+    fn credit(&mut self, amount: A::Amount) -> Result<(), AccountError>;
     fn commit(self);
 }
 
 // ----------------------------
 
-pub trait Operation<T: Account> {
-    fn balance_operation(&self) -> (&T, BalanceOperation<T::Amount>);
+pub trait AccountBalanceOperation<A: Account> {
+    fn balance_operation(&self) -> (&A, BalanceOperation<A::Amount>);
 }
 
 // ----------------------------
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct TransactionError<T: Account> {
-    pub account: T,
-    pub operation: TransactionOperation<T::Amount>,
+pub struct TransactionError<A: Account> {
+    pub account: A,
+    pub operation: TransactionOperation<A::Amount>,
     pub err: AccountError,
 }
 
@@ -66,10 +66,10 @@ pub trait Transaction {
         use std::collections::HashMap;
 
         #[derive(Debug)]
-        struct Value<'a, T: Account + 'a> {
-            account: T,
-            locked: T::LockedAccount<'a>,
-            balance_operations: Vec<BalanceOperation<T::Amount>>,
+        struct Value<'a, A: Account + 'a> {
+            account: A,
+            locked: A::LockedAccount<'a>,
+            balance_operations: Vec<BalanceOperation<A::Amount>>,
         }
         type LockedAccounts<'a, AccountId, Account> = HashMap<AccountId, Value<'a, Account>>;
 
@@ -142,5 +142,34 @@ pub trait Transaction {
         }
 
         Ok(())
+    }
+}
+
+impl<A: Account + 'static> Add for Box<dyn Transaction<TransactionAccount = A>> {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Box::new(CompositeTransaction { lhs: self, rhs })
+    }
+}
+
+struct CompositeTransaction<Account> {
+    lhs: Box<dyn Transaction<TransactionAccount = Account>>,
+    rhs: Box<dyn Transaction<TransactionAccount = Account>>,
+}
+
+impl<A: Account> Transaction for CompositeTransaction<A> {
+    type TransactionAccount = A;
+
+    fn account_balance_operations(
+        &self,
+    ) -> Vec<(
+        &Self::TransactionAccount,
+        BalanceOperation<<Self::TransactionAccount as Account>::Amount>,
+    )> {
+        let mut ret = vec![];
+        ret.extend(self.lhs.account_balance_operations());
+        ret.extend(self.rhs.account_balance_operations());
+        ret
     }
 }

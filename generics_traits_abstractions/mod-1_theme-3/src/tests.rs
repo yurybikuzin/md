@@ -69,6 +69,36 @@ fn explicit() {
     );
 
     assert!(matches!(
+        Transfer::new(bob.clone(), alice.clone(), 50).apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(alice.get_balance(), Ok(150)),
+        "{:?}",
+        alice.get_balance()
+    );
+    assert!(
+        matches!(bob.get_balance(), Ok(150)),
+        "{:?}",
+        bob.get_balance()
+    );
+
+    assert!(matches!(
+        Transfer::new(alice.clone(), bob.clone(), 50).apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(alice.get_balance(), Ok(100)),
+        "{:?}",
+        alice.get_balance()
+    );
+    assert!(
+        matches!(bob.get_balance(), Ok(200)),
+        "{:?}",
+        bob.get_balance()
+    );
+
+    assert!(matches!(
         MultipleOperationTransaction::new(vec![
             Box::new(Withdrawal::new(alice.clone(), 50)),
             Box::new(Deposit::new(bob.clone(), 50)),
@@ -131,6 +161,61 @@ fn implicit() {
     );
     assert!(
         matches!(charlie.get_balance(), Ok(350)),
+        "{:?}",
+        charlie.get_balance()
+    );
+
+    assert!(matches!(
+        {
+            type A = Arc<SimpleAccount<&'static str, u64>>;
+            type T = Box<dyn Transaction<TransactionAccount = A>>;
+            let alice_bob_transfer: T = Box::new(Transfer::new(alice.clone(), bob.clone(), 50));
+            let bob_charlie_transfer: T = Box::new(Transfer::new(bob.clone(), charlie.clone(), 40));
+            let charlie_alice_ransfer: T =
+                Box::new(Transfer::new(charlie.clone(), alice.clone(), 30));
+            alice_bob_transfer + bob_charlie_transfer + charlie_alice_ransfer
+        }
+        .apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(alice.get_balance(), Ok(80)),
+        "{:?}",
+        alice.get_balance()
+    );
+    assert!(
+        matches!(bob.get_balance(), Ok(160)),
+        "{:?}",
+        bob.get_balance()
+    );
+    assert!(
+        matches!(charlie.get_balance(), Ok(360)),
+        "{:?}",
+        charlie.get_balance()
+    );
+
+    assert!(matches!(
+        transaction![
+            Arc<SimpleAccount<&'static str, u64>> =>
+            Transfer::new(alice.clone(), bob.clone(), 50) ,
+            Transfer::new(bob.clone(), charlie.clone(), 40),
+            Transfer::new(charlie.clone(), alice.clone(), 30),
+        ]
+        .apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(alice.get_balance(), Ok(60)),
+        "{:?}",
+        alice.get_balance()
+    );
+    assert!(
+        matches!(bob.get_balance(), Ok(170)),
+        "{:?}",
+        bob.get_balance()
+    );
+    assert!(
+        matches!(charlie.get_balance(), Ok(370)),
         "{:?}",
         charlie.get_balance()
     );
