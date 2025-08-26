@@ -160,14 +160,20 @@ where
 macro_rules! transaction {
     ($from:expr => $amount:expr => $to:expr) => {
         SingleOperationTransaction::new(Transfer::new($from.clone(), $to.clone(), $amount))
-    }; // (transfer $amount:expr from $from:expr to $to:expr) => {
-    //     SingleOperationTransaction::new(Transfer::new($from.clone(), $to.clone(), $amount))
-    // };
+    };
     // https://lukaswirth.dev/tlborm/decl-macros/patterns/push-down-acc.html
     // https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html
-    ($operation:expr) => {
-        ($operation)
+    ( $( $operations:expr ),+ $(,)? ) => {
+        transaction!(; , $( $operations ),+ )
+    };
+    ( $($accu:expr,)*; , $operation:expr $(, $operations:expr ),* ) => {
+        transaction!(
+            $($accu,)* Box::new($operation), ;
+            $(, $operations ),*
+        )
+    };
+    ( $($accu:expr,)+; ) => {
+        MultipleOperationTransaction::new(vec![ $($accu,)+ ])
     };
 }
-// pub use transaction;
-// https://stackoverflow.com/questions/26731243/how-do-i-use-a-macro-across-module-files
+// pub use transaction; // https://stackoverflow.com/questions/26731243/how-do-i-use-a-macro-across-module-files

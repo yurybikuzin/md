@@ -130,45 +130,40 @@ fn implicit() {
         alice.get_balance()
     );
 
-    // assert!(matches!((bob.clone() - 50.into()).apply(), Ok(())));
-    // assert!(
-    //     matches!(bob.get_balance(), Ok(150)),
-    //     "{:?}",
-    //     bob.get_balance()
-    // );
-    //
-    // assert!(matches!(
-    //     transaction!( charlie => 50 => alice ).apply(),
-    //     Ok(())
-    // ));
-    // assert!(
-    //     matches!(charlie.get_balance(), Ok(250)),
-    //     "{:?}",
-    //     charlie.get_balance()
-    // );
-    // assert!(
-    //     matches!(alice.get_balance(), Ok(200)),
-    //     "{:?}",
-    //     alice.get_balance()
-    // );
+    assert!(matches!((bob.clone() - 50.into()).apply(), Ok(())));
+    assert!(
+        matches!(bob.get_balance(), Ok(150)),
+        "{:?}",
+        bob.get_balance()
+    );
 
-    // assert!(matches!(
-    //     transaction!(alice.clone() + 50.into()).apply(),
-    //     Ok(())
-    // ));
-    // assert!(
-    //     matches!(alice.get_balance(), Ok(250)),
-    //     "{:?}",
-    //     alice.get_balance()
-    // );
-    //
-    // assert!(matches!(
-    //     transaction!(charlie.clone() - 50.into()).apply(),
-    //     Ok(())
-    // ));
-    // assert!(
-    //     matches!(charlie.get_balance(), Ok(200)),
-    //     "{:?}",
-    //     charlie.get_balance()
-    // );
+    assert!(matches!(
+        transaction!( charlie => 50 => alice ).apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(charlie.get_balance(), Ok(250)),
+        "{:?}",
+        charlie.get_balance()
+    );
+    assert!(
+        matches!(alice.get_balance(), Ok(200)),
+        "{:?}",
+        alice.get_balance()
+    );
+
+    assert!(matches!(
+        transaction![charlie.clone() + 50.into(), alice.clone() - 50.into()].apply(),
+        Ok(())
+    ));
+    assert!(
+        matches!(alice.get_balance(), Ok(150)),
+        "{:?}",
+        alice.get_balance()
+    );
+    assert!(
+        matches!(charlie.get_balance(), Ok(300)),
+        "{:?}",
+        charlie.get_balance()
+    );
 }

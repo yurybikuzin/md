@@ -6,8 +6,7 @@ pub enum AccountError {
     InsufficientFunds,
 }
 
-pub trait Account: Debug + Clone // + Add<Self::Amount, Output = dyn Operation<Self>>
-{
+pub trait Account: Debug + Clone {
     type AccountId: Debug + Hash + Eq;
     type LockedAccount<'a>: LockedAccount<'a, Self>
     where
@@ -67,6 +66,7 @@ pub trait Transaction {
         &Self::TransactionAccount,
         <Self::TransactionAccount as Account>::Amount,
     )>;
+
     fn credit_accounts(
         &self,
     ) -> Vec<(
@@ -169,15 +169,13 @@ pub trait Transaction {
                         });
                     }
                 }
-                // to_be_commited.push(locked);
-                to_be_commited.push((account, locked));
+                to_be_commited.push(locked);
             }
 
             to_be_commited
         };
 
-        for (_, locked) in to_be_commited {
-            // for locked in to_be_commited {
+        for locked in to_be_commited {
             locked.commit();
         }
 
